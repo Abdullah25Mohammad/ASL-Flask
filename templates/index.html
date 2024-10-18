@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASL Translator</title>
+    <style>
+        /* Optional styling for better visibility */
+        #videoElement {
+            width: 300px; /* Adjust width as needed */
+            height: auto;
+            border: 1px solid #ccc;
+            display: none; /* Hide the video element */
+        }
+        #processedFrame {
+            width: 300px; /* Adjust width as needed */
+            height: auto;
+            border: 1px solid #f00; /* Border for distinction */
+            display: none; /* Initially hidden */
+        }
+        #letter {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #confidence {
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <h1>ASL Translator</h1>
+    <div>
+        <video id="videoElement" autoplay playsinline></video>
+        <img id="processedFrame" alt="Processed Frame"> <!-- Image element to display the processed frame -->
+
+        <p id="letter"></p> <!-- Paragraph element to display the detected letter -->
+        <p id="confidence"></p> <!-- Paragraph element to display the confidence score -->
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('videoElement');
+        const processedFrame = document.getElementById('processedFrame');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        const letterElement = document.getElementById('letter');
+        const confidenceElement = document.getElementById('confidence');
+
+        // Function to get the detected letter and confidence score
+        function getDetectedLetter() {
+            fetch('/get_letter')
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data);
+                    letterElement.textContent = `Detected Letter: ${data.letter}`;
+                    confidenceElement.textContent = `Confidence: ${data.conf}`;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+
+            // Get the detected letter and confidence score every 500ms
+            setTimeout(getDetectedLetter, 500);
+        }
+
+        // Request access to the camera
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then((stream) => {
+                videoElement.srcObject = stream;
+                videoElement.style.display = 'block'; // Show the video element once the stream is set
+            })
+            .catch((err) => {
+                console.error("Error accessing the camera: ", err);
+            });
+
+
+        // Function to capture frames and send to the server
+        function sendFrameToServer() {
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+            // Convert the frame to a blob and send via fetch
+            canvas.toBlob(function (blob) {
+                const formData = new FormData();
+                formData.append('frame', blob, 'frame.jpg');
+
+                // Send the frame to the server using fetch
+                fetch('/upload_frame', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.blob()) // Get the processed image as a blob
+                .then(blob => {
+                    const url = URL.createObjectURL(blob); // Create a URL for the blob
+                    processedFrame.src = url; // Set the src of the img element
+                    processedFrame.style.display = 'block'; // Show the processed frame
+                    videoElement.style.display = 'none'; // Hide the video element
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            });
+
+            // Capture the next frame after 100ms
+            setTimeout(sendFrameToServer, 100);
+        }
+
+        // Start sending frames when the video is ready
+        videoElement.addEventListener('play', () => {
+            sendFrameToServer();
+        });
+    </script>
+</body>
+</html>
